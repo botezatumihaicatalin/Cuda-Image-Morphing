@@ -2,18 +2,77 @@
 #include <stdio.h>
 #include <vector>
 #include <iostream>
+
 #include "CImg.h"
-#include <time.h>
 
 using namespace cimg_library;
 using namespace std;
 
 enum CommunicationTag
 {
+	COMM_TAG_MASTER_SEND_IMG,
 	COMM_TAG_MASTER_SEND_TASK,
 	COMM_TAG_MASTER_SEND_TERMINATE,
 	COMM_TAG_SLAVE_SEND_RESULT,
 };
+
+void sendImage(CImg<char> * img, int proc)
+{
+	int * headers = new int[4];
+	headers[0] = img->width();
+	headers[1] = img->height();
+	headers[2] = img->depth();
+	headers[3] = img->spectrum();
+	char * data = img->data();
+	int size = img->size();
+
+	MPI_Send(headers, 4, MPI_INT, proc, COMM_TAG_MASTER_SEND_IMG, MPI_COMM_WORLD);
+	MPI_Send(data, size, MPI_CHAR, proc, COMM_TAG_MASTER_SEND_IMG, MPI_COMM_WORLD);
+
+	delete[] headers;
+}
+
+CImg<char> * receiveImage(int proc)
+{
+	int headersSize = 0;
+	int dataSize = 0;
+	MPI_Status stats;
+	MPI_Probe(proc, COMM_TAG_MASTER_SEND_IMG, MPI_COMM_WORLD, &stats);
+	MPI_Get_count(&stats, MPI_INT, &headersSize);
+
+	if (headersSize != 4)
+	{
+		return NULL;
+	}
+
+	int * imgHeaders = new int[headersSize];
+
+	MPI_Recv(imgHeaders, headersSize, MPI_INT, proc, COMM_TAG_MASTER_SEND_IMG, MPI_COMM_WORLD, &stats);
+
+	int width = imgHeaders[0];
+	int height = imgHeaders[1];
+	int depth = imgHeaders[2];
+	int chans = imgHeaders[3];
+	int size = width * height * depth * chans;
+
+	delete[] imgHeaders;
+
+	MPI_Probe(proc, COMM_TAG_MASTER_SEND_IMG, MPI_COMM_WORLD, &stats);
+	MPI_Get_count(&stats, MPI_CHAR, &dataSize);
+
+	if (dataSize != size)
+	{
+		return NULL;
+	}
+
+	char * imgData = new char[size];
+	MPI_Recv(imgData, size, MPI_CHAR, proc, COMM_TAG_MASTER_SEND_IMG, MPI_COMM_WORLD, &stats);
+
+	CImg<char> *image = new CImg<char>(width, height, depth, chans);
+	image->_data = imgData;
+
+	return image;
+}
 
 int main(int argc, char *argv[]) 
 {
@@ -30,120 +89,52 @@ int main(int argc, char *argv[])
 	MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	CImg<char> * image1;
+	CImg<char> * image2;
+
 	if (rank == 0) 
 	{
 		clock_t tStartt = clock();
-		CImg<char> image1("important.jpg");
-		CImg<char> image2("important2.jpg");
-
-		printf("Image1 : %d %d\n", image1.height(), image1.width());
-		
-		CImg<char> output(image1);
-		output.fill(1);
-		printf("Time taken to load imgs: %.2fs\n", (double)(clock() - tStartt)/CLOCKS_PER_SEC);
+		image1 = new CImg<char>("important.jpg");
+		image2 = new CImg<char>("important2.jpg");
+		printf("Time taken to read imgs: %.2fs\n", (double)(clock() - tStartt)/CLOCKS_PER_SEC);
 
 		clock_t tStart = clock();
-		
-		int height = output.height();
-		int width = output.width();
 
-		int totalPixels = width * height;
-		int maxPixelsPerProc = numprocs == 1 ? totalPixels : (totalPixels / (numprocs - 1)) + 1;
-		
-		int x, y;
-		char * rgb = new char[3];
-		int currPixelIndex = 0;
+		printf("Master %d %d %d\n", (*image2)(0,0,0,0), (*image2)(0,0,0,1), (*image2)(0,0,0,2));
 
-		for (int procRank = 1; procRank < numprocs; procRank ++)
+		for (int i = 1; i < numprocs;i ++)
 		{
-			int sendPixels = totalPixels > maxPixelsPerProc ? maxPixelsPerProc : totalPixels;
-			totalPixels -= sendPixels;
-
-			MPI_Send(&sendPixels, 1, MPI_INT, procRank, COMM_TAG_MASTER_SEND_TASK, MPI_COMM_WORLD);
-			printf("Sending %d\n", sendPixels);
-
-			vector<int> xyBuf;
-			vector<char> rgbBuf;
-
-			int addedPixels = 0;
-			for (;currPixelIndex < width * height && addedPixels < sendPixels; currPixelIndex++)
-			{
-				x = currPixelIndex % width;
-				y = currPixelIndex / width;
-				xyBuf.push_back(x);
-				xyBuf.push_back(y);
-
-				for (int c = 0; c < 3; c++)
-				{
-					rgbBuf.push_back(image1(x, y, 0, c));
-				}
-				addedPixels ++;
-			}
-
-			MPI_Send(&xyBuf.front(), xyBuf.size(), MPI_INT, procRank, COMM_TAG_MASTER_SEND_TASK, MPI_COMM_WORLD);
-			MPI_Send(&rgbBuf.front(), rgbBuf.size(), MPI_CHAR, procRank, COMM_TAG_MASTER_SEND_TASK, MPI_COMM_WORLD);
+			sendImage(image1, i);
+			sendImage(image2, i);
 		}
 
-		MPI_Status(status);
-
-		for (int i = 1; i < numprocs; i++)
-		{
-			int slaveCount = 0;
-			MPI_Recv(&slaveCount, 1, MPI_INT, i, COMM_TAG_SLAVE_SEND_RESULT, MPI_COMM_WORLD, &status);
-			
-			printf("Received on master count: %d\n", slaveCount);
-
-			vector<int> xyBuf;
-			vector<char> rgbBuf;
-
-			xyBuf.resize(slaveCount * 2);
-			rgbBuf.resize(slaveCount * 3);
-
-			MPI_Recv(&xyBuf.front(), xyBuf.size(), MPI_INT, i, COMM_TAG_SLAVE_SEND_RESULT, MPI_COMM_WORLD, &status);
-			MPI_Recv(&rgbBuf.front(), rgbBuf.size(), MPI_CHAR, i, COMM_TAG_SLAVE_SEND_RESULT, MPI_COMM_WORLD, &status);
-
-			for (int index = 0; index < slaveCount; index++)
-			{
-				for (int c = 0; c < 3; c++)
-				{
-					output(xyBuf[2 * index], xyBuf[2 * index + 1], 0, c) = rgbBuf[3 * index + c];
-				}
-				//printf("Received on master %d %d %d %d %d\n",xyBuf[index * 2], xyBuf[index * 2 + 1], rgbBuf[3 * index], rgbBuf[3 * index + 1], rgb[3 * index + 2]);
-			}
-		}
-
+		MPI_Status(stats);
+		
 		printf("Time taken: %.2fs\n", (double)(clock() - tStart)/CLOCKS_PER_SEC);
-
-		output.save("output.jpg");
 	}
 	else
 	{
-	    MPI_Status status;
-		MPI_Probe(0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-		
-		int count;
-		vector<int> xyBuf;
-		vector<char> rgbBuf;
-		
-		MPI_Recv(&count, 1, MPI_INT, 0, COMM_TAG_MASTER_SEND_TASK, MPI_COMM_WORLD, &status);
-
-		xyBuf.resize(count * 2);
-		rgbBuf.resize(count * 3);
-
-		MPI_Recv(&xyBuf.front(), xyBuf.size(), MPI_INT, 0, COMM_TAG_MASTER_SEND_TASK, MPI_COMM_WORLD, &status);
-		MPI_Recv(&rgbBuf.front(), rgbBuf.size(), MPI_CHAR, 0, COMM_TAG_MASTER_SEND_TASK, MPI_COMM_WORLD, &status);
-
-		for (int i = 0; i < count; i ++)
+		image1 = receiveImage(0);
+		if (image1 == NULL)
 		{
-			rgbBuf[3 * i] = -rgbBuf[3 * i];
-			rgbBuf[3 * i + 1] = -rgbBuf[3 * i + 1];
-			rgbBuf[3 * i + 2] = -rgbBuf[3 * i + 2];
+			printf("Error when receiving image1. Terminating.\n");
+			MPI_Abort(MPI_COMM_WORLD, rc);
 		}
 
-		MPI_Send(&count, 1, MPI_INT, 0, COMM_TAG_SLAVE_SEND_RESULT, MPI_COMM_WORLD);
-		MPI_Send(&xyBuf.front(), xyBuf.size(), MPI_INT, 0, COMM_TAG_SLAVE_SEND_RESULT, MPI_COMM_WORLD);
-		MPI_Send(&rgbBuf.front(), rgbBuf.size(), MPI_CHAR, 0, COMM_TAG_SLAVE_SEND_RESULT, MPI_COMM_WORLD);
+		image2 = receiveImage(0);
+		if (image2 == NULL)
+		{
+			printf("Error when receiving image2. Terminating.\n");
+			MPI_Abort(MPI_COMM_WORLD, rc);
+		}
+		printf("Slave %d %d %d %d\n", rank, (*image2)(0,0,0,0), (*image2)(0,0,0,1), (*image2)(0,0,0,2));
 	}
 
-	MPI_Finalize();
+	int width = image1->width();
+	int height = image1->height();
+
+
+
+	MPI_Finalize(); 
 }
