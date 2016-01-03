@@ -3,56 +3,68 @@
 #include "cuda_runtime.h"
 #include <time.h>
 #include <CImg.h>
+#include <math.h>
+#include <vector>
+#include <deque>
+#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
 
-using namespace cimg_library;
+#include "Geometry.h"
+#include "Delaunay.h"
 
-//long offset(const int x, const int y=0, const int z=0, const int c=0) const {
-//    return x + y*(long)_width + z*(long)(_width*_height) + c*(long)(_width*_height*_depth);
-//}
-
-__global__ void useClass(char * data1, char * data2, char * output, float ratio, int width, int height, int depth, int spectrum)
+void drawTriangulation(cimg_library::CImg<unsigned char> & img, const std::vector<Point> & points, const std::vector<IndexTriangle> & triangles)
 {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (index < width * height * depth * spectrum)
+	const unsigned char green[] = { 0,255,0 };
+	for (int i = 0; i < triangles.size(); i++)
 	{
-		output[index] = data1[index] * (1 - ratio) + data2[index] * ratio;
+		for (int pIndex = 0; pIndex < 3; pIndex ++)
+		{
+			int nextPIndex = (pIndex + 1) % 3;
+			img.draw_line(
+				points[triangles[i].points[pIndex]].x, 
+				points[triangles[i].points[pIndex]].y, 
+				points[triangles[i].points[nextPIndex]].x, 
+				points[triangles[i].points[nextPIndex]].y, 
+			green);
+		}
 	}
 }
 
 int main()
 {
-	CImg<char> * img = new CImg<char>("important.jpg");
-	CImg<char> * img2 = new CImg<char>("important2.jpg");
+	cimg_library::CImg<unsigned char> visu(500, 400, 1, 3, 0);
 
-	int width = img->width();
-	int height = img->height();
-	int depth = img->depth();
-	int spectrum = img->spectrum();
-	int size = img->size();
+	std::vector<Point> points(6);
+	points[0].x = 10;
+	points[0].y = 10;
 
-	CImg<char> * output = new CImg<char>(width, height, depth, spectrum);
+	points[1].x = 450;
+	points[1].y = 350;
 
-	char * d_imgData1;
-	char * d_imgData2;
-	char * d_imgOutput;
+	points[2].x = 450;
+	points[2].y = 10;
 
-	cudaMalloc(&d_imgData1, sizeof(char) * size);
-	cudaMalloc(&d_imgData2, sizeof(char) * size);
-	cudaMalloc(&d_imgOutput, sizeof(char) * size);
-	
-	cudaMemcpy(d_imgData1, img->data(), sizeof(char) * size, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_imgData2, img2->data(), sizeof(char) * size, cudaMemcpyHostToDevice);
+	points[3].x = 10;
+	points[3].y = 350;
 
-	int numThreads = 512;
-	int numBlocks = (size / 512) + 1;
+	points[4].x = 200;
+	points[4].y = 200;
 
-	useClass<<< numBlocks, numThreads >>>(d_imgData1, d_imgData2, d_imgOutput, 1, width, height, depth, spectrum);
-	cudaDeviceSynchronize(); 
+	points[5].x = 222;
+	points[5].y = 222;
 
-	cudaMemcpy(output->_data, d_imgOutput, sizeof(char) * size, cudaMemcpyDeviceToHost);
+	std::vector<IndexTriangle> t = boyerWatson(points);
 
-	output->save("output.jpg");
+	visu.fill(100);
+	drawTriangulation(visu, points, t);
+
+	cimg_library::CImgDisplay draw_disp(visu,"Intensity profile");
+
+	while (!draw_disp.is_closed()) {
+		
+	}
+
 
 	return 0;
 }

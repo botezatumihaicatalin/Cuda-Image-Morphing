@@ -149,6 +149,14 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   <ItemGroup>
     <CudaCompile Include="kernel.cu" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Delaunay.h" />
+    <ClInclude Include="Geometry.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Delaunay.cpp" />
+    <ClCompile Include="Geometry.cpp" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 7.5.targets" />
