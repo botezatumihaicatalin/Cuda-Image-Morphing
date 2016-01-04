@@ -36,6 +36,65 @@ void drawTriangulation(cimg_library::CImg<unsigned char> & img, const std::vecto
 	}
 }
 
+struct WarpInput
+{
+	const unsigned char * img;
+	unsigned char * result;
+	int width, height, depth, spectrum;
+
+	const Point * pointsSrc, * pointsDest;
+	int pointsSrcSize, pointsDestSize;
+
+	const IndexTriangle * triangles;
+	int trianglesSize;
+};
+
+void processPixel(int x, int y, WarpInput * input)
+{
+	Point p;
+	p.x = x;
+	p.y = y;
+	for (int trIdx = 0; trIdx < input->trianglesSize; trIdx++)
+	{
+		const Point & p1 = input->pointsSrc[input->triangles[trIdx].points[0]];
+		const Point & p2 = input->pointsSrc[input->triangles[trIdx].points[1]];
+		const Point & p3 = input->pointsSrc[input->triangles[trIdx].points[2]];
+
+		double bot = (p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y);
+		double sTop = (p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y);
+		double tTop = (p3.y - p1.y) * (p.x - p3.x) + (p1.x - p3.x) * (p.y - p3.y);
+
+		double s = sTop / bot;
+		double t = tTop / bot;
+
+		if (!(s >= 0 && s <= 1 && t >= 0 && t <= 1 && (s + t) <= 1))
+		{
+			continue;
+		}
+
+		const Point & destp0 = input->pointsDest[input->triangles[trIdx].points[0]];
+		const Point & destp1 = input->pointsDest[input->triangles[trIdx].points[1]];
+		const Point & destp2 = input->pointsDest[input->triangles[trIdx].points[2]];
+
+		Point destp;
+		destp.x = s * destp0.x + t * destp1.x + (1 - s - t) * destp2.x;
+		destp.y = s * destp0.y + t * destp1.y + (1 - s - t) * destp2.y;
+
+		Point destpRounded;
+		destpRounded.x = round(destp.x);
+		destpRounded.y = round(destp.y);
+
+		for (int c = 0; c < 3; c++)
+		{
+			long offsetNew = destpRounded.x + destpRounded.y*(long)input->width + c*(long)(input->width * input->height * input->depth);
+			long offset = x + y*(long)input->width + c*(long)(input->width * input->height * input->depth);
+			input->result[offsetNew] = input->img[offset];
+		}
+
+		break;
+	}
+}
+
 cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img, 
 	const std::vector<Point> & pointsSrc,  
 	const std::vector<Point> & pointsDest, const std::vector<IndexTriangle> & triangles)
@@ -44,46 +103,24 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 	result.fill(0);
 	int width = img.width();
 	int height = img.height();
+
+	WarpInput warpInput;
+	warpInput.img = img.data();
+	warpInput.result = result.data();
+	warpInput.width = img.width();
+	warpInput.height = img.height();
+	warpInput.depth = img.depth();
+	warpInput.spectrum = img.spectrum();
+	warpInput.pointsSrc = pointsSrc.data();
+	warpInput.pointsSrcSize = pointsSrc.size();
+	warpInput.pointsDest = pointsDest.data();
+	warpInput.pointsDestSize = pointsDest.size();
+	warpInput.triangles = triangles.data();
+	warpInput.trianglesSize = triangles.size();
+
 	cimg_forXY(img,x,y)
 	{
-		Point p;
-		p.x = x;
-		p.y = y;
-		for (int trIdx = 0; trIdx < triangles.size(); trIdx++)
-		{
-			const Point & p1 = pointsSrc[triangles[trIdx].points[0]];
-			const Point & p2 = pointsSrc[triangles[trIdx].points[1]];
-			const Point & p3 = pointsSrc[triangles[trIdx].points[2]];
-
-			double bot = (p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y);
-			double sTop = (p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y);
-			double tTop = (p3.y - p1.y) * (p.x - p3.x) + (p1.x - p3.x) * (p.y - p3.y);
-
-			double s = sTop / bot;
-			double t = tTop / bot;
-
-			if (!(s >= 0 && s <= 1 && t >= 0 && t <= 1 && (s + t) <= 1))
-			{
-				continue;
-			}
-
-			const Point & dest_p0 = pointsDest[triangles[trIdx].points[0]];
-			const Point & dest_p1 = pointsDest[triangles[trIdx].points[1]];
-			const Point & dest_p2 = pointsDest[triangles[trIdx].points[2]];
-
-			Point dest_p;
-			dest_p.x = s * dest_p0.x + t * dest_p1.x + (1 - s - t) * dest_p2.x;
-			dest_p.y = s * dest_p0.y + t * dest_p1.y + (1 - s - t) * dest_p2.y;
-
-			for (int c = 0; c < 3; c++)
-			{
-				result((unsigned int)round(dest_p.x), (unsigned int)round(dest_p.y), 0, c) = img(x, y, 0, c);
-			}
-
-			printf("%.3f %.3f %.3f %.3f \n", dest_p.x, dest_p.y, p.x, p.y);
-
-			break;
-		}
+		processPixel(x, y, &warpInput);
 	}
 
 	return result;
@@ -92,7 +129,7 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> visu("lena2.jpg");
+	cimg_library::CImg<unsigned char> visu("important2.jpg");
 	cimg_library::CImg<unsigned char> out1(visu);
 	cimg_library::CImg<unsigned char> out2(visu);
 
