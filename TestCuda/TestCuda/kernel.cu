@@ -49,8 +49,68 @@ struct WarpInput
 	int trianglesSize;
 };
 
-void processPixel(int x, int y, WarpInput * input)
+WarpInput * cudaCreateWarpInput(cimg_library::CImg<unsigned char> & img, 
+	const std::vector<Point> & pointsSrc,  
+	const std::vector<Point> & pointsDest, const std::vector<IndexTriangle> & triangles)
 {
+	WarpInput * input = new WarpInput();
+
+	input->width = img.width();
+	input->height = img.height();
+	input->spectrum = img.spectrum();
+	input->depth = img.depth();
+
+	const unsigned char * imgData = img.data();
+	unsigned char * dImgData;
+	cudaMalloc(&dImgData, sizeof(unsigned char) * img.size());
+	cudaMemcpy(dImgData, imgData, sizeof(unsigned char) * img.size(), cudaMemcpyHostToDevice);
+	input->img = dImgData;
+
+	unsigned char * dResultData;
+	cudaMalloc(&dResultData, sizeof(unsigned char) * img.size());
+	cudaMemset(dResultData, 0, sizeof(unsigned char) * img.size());
+	input->result = dResultData;
+
+	const Point * pointsSrcData = pointsSrc.data();
+	Point * dPointsSrcData;
+
+	cudaMalloc(&dPointsSrcData, sizeof(Point) * pointsSrc.size());
+	cudaMemcpy(dPointsSrcData, pointsSrcData, sizeof(Point) * pointsSrc.size(), cudaMemcpyHostToDevice);
+	input->pointsSrc = dPointsSrcData;
+	input->pointsSrcSize = pointsSrc.size();
+	
+	const Point * pointsDestData = pointsDest.data();
+	Point * dPointsDestData;
+
+	cudaMalloc(&dPointsDestData, sizeof(Point) * pointsDest.size());
+	cudaMemcpy(dPointsDestData, pointsDestData, sizeof(Point) * pointsDest.size(), cudaMemcpyHostToDevice);
+	input->pointsDest = dPointsDestData;
+	input->pointsDestSize = pointsDest.size();
+
+	const IndexTriangle * trianglesData = triangles.data();
+	IndexTriangle * dTrianglesData;
+
+	cudaMalloc(&dTrianglesData, sizeof(IndexTriangle) * pointsDest.size());
+	cudaMemcpy(dTrianglesData, trianglesData, sizeof(IndexTriangle) * pointsDest.size(), cudaMemcpyHostToDevice);
+	input->triangles = dTrianglesData;
+	input->trianglesSize = triangles.size();
+
+	WarpInput * dInput;
+	cudaMalloc(&dInput, sizeof(WarpInput));
+	cudaMemcpy(dInput, input, sizeof(WarpInput), cudaMemcpyHostToDevice);
+
+	delete input;
+
+	return dInput;
+}
+
+__host__ __device__ void processPixel(double x, double y, WarpInput * input)
+{
+	if (!(x < input->width && x >= 0 && y < input->height && y >= 0))
+	{
+		return;
+	}
+
 	Point p;
 	p.x = x;
 	p.y = y;
@@ -95,6 +155,14 @@ void processPixel(int x, int y, WarpInput * input)
 	}
 }
 
+__global__ void mykernel(WarpInput * input)
+{
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	processPixel(x, y, input);
+}
+
 cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img, 
 	const std::vector<Point> & pointsSrc,  
 	const std::vector<Point> & pointsDest, const std::vector<IndexTriangle> & triangles)
@@ -129,7 +197,7 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> visu("important2.jpg");
+	cimg_library::CImg<unsigned char> visu("face1.jpg");
 	cimg_library::CImg<unsigned char> out1(visu);
 	cimg_library::CImg<unsigned char> out2(visu);
 
@@ -201,9 +269,21 @@ int main()
 	drawSource.close();
 	drawDest.close();
 
-	cimg_library::CImg<unsigned int> res = warp(visu, pointsSrc, pointsDest, triang);
+	WarpInput * dInput = cudaCreateWarpInput(visu, pointsSrc, pointsDest, triang);
+	dim3 threadsPerBlock(32, 32); 
+	dim3 numBlocks((visu.width() / threadsPerBlock.x) + 1, (visu.height() /threadsPerBlock.y) + 1);
+	
+	mykernel<<< numBlocks,threadsPerBlock >>>(dInput);
+	cudaDeviceSynchronize(); 
+	
+	WarpInput * hInput = new WarpInput();
+	cudaMemcpy(hInput, dInput, sizeof(WarpInput), cudaMemcpyDeviceToHost);
+	cudaMemcpy(visu._data, hInput->result, sizeof(unsigned char) * visu.size(), cudaMemcpyDeviceToHost);
 
-	res.display();
+	/*cimg_library::CImg<unsigned char> m = warp(visu, pointsSrc, pointsDest, triang);
+	visu._data = m._data;*/
+
+	visu.display();
 
 	return 0;
 }
