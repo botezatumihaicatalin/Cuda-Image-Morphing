@@ -6,40 +6,21 @@
 #include "Geometry.h"
 
 template<class T>
-void fastRemove(std::vector<T> & arr, int index)
+void fastRemove(std::vector<T> & arr, size_t index)
 {
-	int lastIndex = arr.size() - 1;
+	size_t lastIndex = arr.size() - 1;
 	std::swap(arr[lastIndex], arr[index]);
 	arr.pop_back();
 }
 
 struct PairHash {
-	inline size_t operator()(const std::pair<int,int> & x) const {
-		return std::hash<int>()(x.first) ^ std::hash<int>()(x.second);
+	inline size_t operator()(const std::pair<size_t,size_t> & x) const {
+		return std::hash<size_t>()(x.first) ^ std::hash<size_t>()(x.second);
 	}
 };
 
 std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 {
-
-	Point min, max;
-	min.x = 1000000;
-	min.y = 1000000;
-	max.x = -1000000;
-	max.y = -1000000;
-	for (int i = 0; i < pts.size(); i ++)
-	{
-		if (pts[i].x < min.x)
-			min.x = pts[i].x;
-		if (pts[i].y < min.y)
-			min.y = pts[i].y;
-		if (pts[i].x > max.x)
-			max.x = pts[i].x;
-		if (pts[i].y > max.y)
-			max.y = pts[i].y;
-
-	}
-
 	Point p1, p2, p3;
 
 	p1.x = -100000;
@@ -65,15 +46,15 @@ std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 
 	triangs.push_back(newTriang);
 
-	std::vector<int> badTri;
-	std::unordered_map<std::pair<int, int>, int, PairHash> edgesMap;
-	std::vector<std::pair<int, int>> polygon;
+	std::vector<size_t> badTri;
+	std::unordered_map<std::pair<size_t, size_t>, size_t, PairHash> edgesMap;
+	std::vector<std::pair<size_t, size_t>> polygon;
 
-	for (int idx = 0; idx < pts.size(); idx++)
+	for (size_t idx = 0; idx < pts.size(); idx++)
 	{
 		clone.push_back(pts[idx]);
 
-		for (int triIndex = 0; triIndex < triangs.size(); triIndex++)
+		for (size_t triIndex = 0; triIndex < triangs.size(); triIndex++)
 		{
 			Circle circum = findCircumcircle(clone[triangs[triIndex].points[0]], clone[triangs[triIndex].points[1]], clone[triangs[triIndex].points[2]]);
 			if (!isInside(circum, pts[idx]))
@@ -81,10 +62,10 @@ std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 				continue;
 			}
 			badTri.push_back(triIndex);
-			for (int pIndex = 0; pIndex < 3; pIndex++)
+			for (size_t pIndex = 0; pIndex < 3; pIndex++)
 			{
-				int nextPIndex = (pIndex + 1) % 3;
-				std::pair<int, int> edge(triangs[triIndex].points[pIndex], triangs[triIndex].points[nextPIndex]);
+				size_t nextPIndex = (pIndex + 1) % 3;
+				std::pair<size_t, size_t> edge(triangs[triIndex].points[pIndex], triangs[triIndex].points[nextPIndex]);
 				if (edge.first > edge.second)
 				{
 					std::swap(edge.first, edge.second);
@@ -97,12 +78,12 @@ std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 			}
 		}
 
-		for (int i = 0; i < badTri.size(); i++)
+		for (size_t i = 0; i < badTri.size(); i++)
 		{
-			for (int pIndex = 0; pIndex < 3; pIndex++)
+			for (size_t pIndex = 0; pIndex < 3; pIndex++)
 			{
-				int nextPIndex = (pIndex + 1) % 3;
-				std::pair<int, int> edge(triangs[badTri[i]].points[pIndex], triangs[badTri[i]].points[nextPIndex]);
+				size_t nextPIndex = (pIndex + 1) % 3;
+				std::pair<size_t, size_t> edge(triangs[badTri[i]].points[pIndex], triangs[badTri[i]].points[nextPIndex]);
 				if (edge.first > edge.second)
 				{
 					std::swap(edge.first, edge.second);
@@ -117,14 +98,14 @@ std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 		std::sort(badTri.begin(), badTri.end());
 		while(!badTri.empty())
 		{
-			int& triangleIndex = badTri.back();
+			size_t& triangleIndex = badTri.back();
 			fastRemove(triangs, triangleIndex);
 			badTri.pop_back();
 		}
 
 		while(!polygon.empty())
 		{
-			std::pair<int, int> &edge = polygon.back();
+			std::pair<size_t, size_t> &edge = polygon.back();
 			polygon.pop_back();
 			
 			IndexTriangle newTriang;
@@ -138,9 +119,9 @@ std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 		edgesMap.clear();
 	}
 
-	for (int triIdx = 0; triIdx < triangs.size(); triIdx ++)
+	for (size_t triIdx = 0; triIdx < triangs.size(); triIdx ++)
 	{
-		for (int pIndex = 0; pIndex < 3; pIndex++) {
+		for (size_t pIndex = 0; pIndex < 3; pIndex++) {
 			if (triangs[triIdx].points[pIndex] <= 2)
 			{
 				fastRemove(triangs, triIdx);

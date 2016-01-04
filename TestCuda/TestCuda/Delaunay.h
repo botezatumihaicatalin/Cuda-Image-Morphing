@@ -7,7 +7,7 @@
 
 struct IndexTriangle
 {
-	int points[3];
+	size_t points[3];
 };
 
 std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts);
