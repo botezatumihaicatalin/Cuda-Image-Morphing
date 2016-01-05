@@ -23,14 +23,14 @@ std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts)
 {
 	Point p1, p2, p3;
 
-	p1.x = -100000;
-	p1.y = -100000;
+	p1.x = -10000000;
+	p1.y = -10000000;
 
-	p2.x = 100000;
-	p2.y = -900000;
+	p2.x = 10000000;
+	p2.y = -90000000;
 
 	p3.x = 0;
-	p3.y = 40000;
+	p3.y = 4000000;
 
 	std::vector<Point> clone;
 	clone.push_back(p1);

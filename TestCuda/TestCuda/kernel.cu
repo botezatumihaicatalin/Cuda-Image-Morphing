@@ -9,6 +9,8 @@
 #include "Geometry.h"
 #include "Delaunay.h"
 
+#include <windows.h>
+
 void drawPoints(cimg_library::CImg<unsigned char> & img, const std::vector<Point> & points)
 {
 	const unsigned char red[] = { 255,0,0 };
@@ -104,7 +106,7 @@ WarpInput * cudaCreateWarpInput(cimg_library::CImg<unsigned char> & img,
 	return dInput;
 }
 
-__host__ __device__ void processPixel(double x, double y, WarpInput * input)
+__host__ __device__ void processPixel(const double & x, const double & y, WarpInput * input, const double & ratio = 1)
 {
 	if (!(x < input->width && x >= 0 && y < input->height && y >= 0))
 	{
@@ -116,9 +118,9 @@ __host__ __device__ void processPixel(double x, double y, WarpInput * input)
 	p.y = y;
 	for (int trIdx = 0; trIdx < input->trianglesSize; trIdx++)
 	{
-		const Point & p1 = input->pointsSrc[input->triangles[trIdx].points[0]];
-		const Point & p2 = input->pointsSrc[input->triangles[trIdx].points[1]];
-		const Point & p3 = input->pointsSrc[input->triangles[trIdx].points[2]];
+		const Point & p1 = input->pointsDest[input->triangles[trIdx].points[0]];
+		const Point & p2 = input->pointsDest[input->triangles[trIdx].points[1]];
+		const Point & p3 = input->pointsDest[input->triangles[trIdx].points[2]];
 
 		double bot = (p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y);
 		double sTop = (p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y);
@@ -132,43 +134,51 @@ __host__ __device__ void processPixel(double x, double y, WarpInput * input)
 			continue;
 		}
 
-		const Point & destp0 = input->pointsDest[input->triangles[trIdx].points[0]];
-		const Point & destp1 = input->pointsDest[input->triangles[trIdx].points[1]];
-		const Point & destp2 = input->pointsDest[input->triangles[trIdx].points[2]];
+		const Point & destp0 = input->pointsSrc[input->triangles[trIdx].points[0]];
+		const Point & destp1 = input->pointsSrc[input->triangles[trIdx].points[1]];
+		const Point & destp2 = input->pointsSrc[input->triangles[trIdx].points[2]];
 
 		Point destp;
 		destp.x = s * destp0.x + t * destp1.x + (1 - s - t) * destp2.x;
 		destp.y = s * destp0.y + t * destp1.y + (1 - s - t) * destp2.y;
 
+		destp.x = destp.x * ratio + p.x * (1 - ratio); 
+		destp.y = destp.y * ratio + p.y * (1 - ratio); 
+
+		Point destpFloored;
+		destpFloored.x = (int)(destp.x);
+		destpFloored.y = (int)(destp.y);
+
 		Point destpRounded;
-		destpRounded.x = round(destp.x);
-		destpRounded.y = round(destp.y);
+		destpRounded.x = (int)round(destp.x);
+		destpRounded.y = (int)round(destp.y);
 
 		for (int c = 0; c < 3; c++)
 		{
-			long offsetNew = destpRounded.x + destpRounded.y*(long)input->width + c*(long)(input->width * input->height * input->depth);
-			long offset = x + y*(long)input->width + c*(long)(input->width * input->height * input->depth);
-			input->result[offsetNew] = input->img[offset];
+			long offsetImg = destpRounded.x + destpRounded.y*(long)input->width + c*(long)(input->width * input->height * input->depth);
+			long offsetResult = x + y*(long)input->width + c*(long)(input->width * input->height * input->depth);
+			input->result[offsetResult] = input->img[offsetImg];
 		}
 
 		break;
 	}
 }
 
-__global__ void mykernel(WarpInput * input)
+__global__ void mykernel(WarpInput * input, double ratio = 1)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	processPixel(x, y, input);
+	processPixel(x, y, input, ratio);
 }
 
 cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img, 
 	const std::vector<Point> & pointsSrc,  
-	const std::vector<Point> & pointsDest, const std::vector<IndexTriangle> & triangles)
+	const std::vector<Point> & pointsDest, const std::vector<IndexTriangle> & triangles,
+	const double & ratio = 1)
 {
 	cimg_library::CImg<unsigned char> result(img);
-	result.fill(0);
+	result.fill(1);
 	int width = img.width();
 	int height = img.height();
 
@@ -188,7 +198,7 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 	cimg_forXY(img,x,y)
 	{
-		processPixel(x, y, &warpInput);
+		processPixel(x, y, &warpInput, ratio);
 	}
 
 	return result;
@@ -197,9 +207,13 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> visu("face1.jpg");
+	cimg_library::CImg<unsigned char> visu("lena.jpg");
 	cimg_library::CImg<unsigned char> out1(visu);
 	cimg_library::CImg<unsigned char> out2(visu);
+
+	int * t;
+	cudaMalloc(&t, sizeof(int) * 1000);
+	cudaFree(t);
 
 	std::vector<Point> pointsSrc(4);
 	pointsSrc[0].x = 0;
@@ -269,21 +283,47 @@ int main()
 	drawSource.close();
 	drawDest.close();
 
-	WarpInput * dInput = cudaCreateWarpInput(visu, pointsSrc, pointsDest, triang);
+	/*WarpInput * dInput = cudaCreateWarpInput(visu, pointsSrc, pointsDest, triang);
 	dim3 threadsPerBlock(32, 32); 
 	dim3 numBlocks((visu.width() / threadsPerBlock.x) + 1, (visu.height() /threadsPerBlock.y) + 1);
 	
-	mykernel<<< numBlocks,threadsPerBlock >>>(dInput);
+	mykernel<<< numBlocks,threadsPerBlock >>>(dInput, 1);
 	cudaDeviceSynchronize(); 
 	
 	WarpInput * hInput = new WarpInput();
 	cudaMemcpy(hInput, dInput, sizeof(WarpInput), cudaMemcpyDeviceToHost);
 	cudaMemcpy(visu._data, hInput->result, sizeof(unsigned char) * visu.size(), cudaMemcpyDeviceToHost);
 
-	/*cimg_library::CImg<unsigned char> m = warp(visu, pointsSrc, pointsDest, triang);
-	visu._data = m._data;*/
+	visu.display();*/
 
-	visu.display();
+	cimg_library::CImgDisplay result(visu,"Source morph");
+
+	std::vector<cimg_library::CImg<unsigned char>> frames;
+	
+	int count = 0;
+	double step = 0.01;
+	for (double r = step; r <= 1; r += step) {
+		count ++;
+		frames.push_back(warp(visu, pointsSrc, pointsDest, triang, r));
+	}
+
+	double duration = 2000;
+	double wait = duration / frames.size();
+
+	int index = 0;
+	int way = 1;
+	while(!result.is_closed()) {
+		frames[index].display(result);
+		Sleep(wait);
+		index += way;
+		if (index >= count) {
+			index = frames.size() - 1;
+			way = -1;
+		} else if (index <= -1) {
+			index = 0;
+			way = 1;
+		}
+	}
 
 	return 0;
 }
