@@ -8,7 +8,11 @@
 template<class T>
 void fastRemove(std::vector<T> & arr, size_t index)
 {
-	size_t lastIndex = arr.size() - 1;
+	size_t size = arr.size();
+	if (size == 0) {
+		return;
+	}
+	size_t lastIndex = size - 1;
 	std::swap(arr[lastIndex], arr[index]);
 	arr.pop_back();
 }

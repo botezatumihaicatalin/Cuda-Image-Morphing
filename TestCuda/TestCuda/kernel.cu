@@ -106,6 +106,36 @@ WarpInput * cudaCreateWarpInput(cimg_library::CImg<unsigned char> & img,
 	return dInput;
 }
 
+__host__ __device__ long at(const int & x, const int & y, const int & z, const int & c, const int & width, const int & height, const int & depth) 
+{
+	return x + y*(long)width + z*(long)(width*height) + c*(long)(width*height*depth);
+}
+
+__host__ __device__ double cubic_atXY(const double & fx, const double & fy, const int z, const int c, const int & width, const int & height, const int & depth, const unsigned char * img) {
+      const double
+        nfx = fx<0?0:(fx>width - 1?width - 1:fx),
+        nfy = fy<0?0:(fy>height - 1?height - 1:fy);
+      const int x = (int)nfx, y = (int)nfy;
+      const double dx = nfx - x, dy = nfy - y;
+      const int
+        px = x - 1<0?0:x - 1, nx = dx>0?x + 1:x, ax = x + 2>=width?width - 1:x + 2,
+        py = y - 1<0?0:y - 1, ny = dy>0?y + 1:y, ay = y + 2>=height?height - 1:y + 2;
+      const double
+        Ipp = (double)img[at(px,py,z,c,width,height,depth)], Icp = (double)img[at(x,py,z,c,width,height,depth)], Inp = (double)img[at(nx,py,z,c,width,height,depth)],
+        Iap = (double)img[at(ax,py,z,c,width,height,depth)],
+        Ip = Icp + 0.5f*(dx*(-Ipp + Inp) + dx*dx*(2*Ipp - 5*Icp + 4*Inp - Iap) + dx*dx*dx*(-Ipp + 3*Icp - 3*Inp + Iap)),
+        Ipc = (double)img[at(px,y,z,c,width,height,depth)],  Icc = (double)img[at(x,y,z,c,width,height,depth)], Inc = (double)img[at(nx,y,z,c,width,height,depth)],
+        Iac = (double)img[at(ax,y,z,c,width,height,depth)],
+        Ic = Icc + 0.5f*(dx*(-Ipc + Inc) + dx*dx*(2*Ipc - 5*Icc + 4*Inc - Iac) + dx*dx*dx*(-Ipc + 3*Icc - 3*Inc + Iac)),
+        Ipn = (double)img[at(px,ny,z,c,width,height,depth)], Icn = (double)img[at(x,ny,z,c,width,height,depth)], Inn = (double)img[at(nx,ny,z,c,width,height,depth)],
+        Ian = (double)img[at(ax,ny,z,c,width,height,depth)],
+        In = Icn + 0.5f*(dx*(-Ipn + Inn) + dx*dx*(2*Ipn - 5*Icn + 4*Inn - Ian) + dx*dx*dx*(-Ipn + 3*Icn - 3*Inn + Ian)),
+        Ipa = (double)img[at(px,ay,z,c,width,height,depth)], Ica = (double)img[at(x,ay,z,c,width,height,depth)], Ina = (double)img[at(nx,ay,z,c,width,height,depth)],
+        Iaa = (double)img[at(ax,ay,z,c,width,height,depth)],
+        Ia = Ica + 0.5f*(dx*(-Ipa + Ina) + dx*dx*(2*Ipa - 5*Ica + 4*Ina - Iaa) + dx*dx*dx*(-Ipa + 3*Ica - 3*Ina + Iaa));
+      return Ic + 0.5f*(dy*(-Ip + In) + dy*dy*(2*Ip - 5*Ic + 4*In - Ia) + dy*dy*dy*(-Ip + 3*Ic - 3*In + Ia));
+}
+
 __host__ __device__ void processPixel(const double & x, const double & y, WarpInput * input, const double & ratio = 1)
 {
 	if (!(x < input->width && x >= 0 && y < input->height && y >= 0))
@@ -155,9 +185,9 @@ __host__ __device__ void processPixel(const double & x, const double & y, WarpIn
 
 		for (int c = 0; c < 3; c++)
 		{
-			long offsetImg = destpRounded.x + destpRounded.y*(long)input->width + c*(long)(input->width * input->height * input->depth);
-			long offsetResult = x + y*(long)input->width + c*(long)(input->width * input->height * input->depth);
-			input->result[offsetResult] = input->img[offsetImg];
+			long offsetImg = at(destpRounded.x, destpRounded.y, 0, c, input->width, input->height, input->depth);
+			long offsetResult = at(x, y, 0, c, input->width, input->height, input->depth);
+			input->result[offsetResult] = cubic_atXY(destp.x, destp.y, 0, c, input->width, input->height, input->depth, input->img);
 		}
 
 		break;
@@ -171,6 +201,8 @@ __global__ void mykernel(WarpInput * input, double ratio = 1)
 
 	processPixel(x, y, input, ratio);
 }
+
+
 
 cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img, 
 	const std::vector<Point> & pointsSrc,  
@@ -207,9 +239,10 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> visu("lena.jpg");
+	cimg_library::CImg<unsigned char> visu("test1/img1.jpg");
+	cimg_library::CImg<unsigned char> visu2("test1/img2.jpg");
 	cimg_library::CImg<unsigned char> out1(visu);
-	cimg_library::CImg<unsigned char> out2(visu);
+	cimg_library::CImg<unsigned char> out2(visu2);
 
 	int * t;
 	cudaMalloc(&t, sizeof(int) * 1000);
@@ -236,10 +269,10 @@ int main()
 	drawTriangulation(out1, pointsSrc, triang);
 	drawPoints(out1, pointsSrc);
 
-	out2.assign(visu);
+	out2.assign(visu2);
 	drawPoints(out2, pointsDest);
 
-	cimg_library::CImgDisplay drawSource(out2,"Source morph");
+	cimg_library::CImgDisplay drawSource(out1,"Source morph");
 	cimg_library::CImgDisplay drawDest(out2,"Dest morph");
 
 	while (!drawSource.is_closed() && !drawDest.is_closed()) {
@@ -274,7 +307,7 @@ int main()
 
 			pointsDest.push_back(p);
 			
-			out2.assign(visu);
+			out2.assign(visu2);
 			drawPoints(out2, pointsDest);
 			out2.display(drawDest);
 		}
@@ -301,10 +334,11 @@ int main()
 	std::vector<cimg_library::CImg<unsigned char>> frames;
 	
 	int count = 0;
-	double step = 0.01;
-	for (double r = step; r <= 1; r += step) {
+	double step = 0.02;
+	for (double r = step; r <= 1.0; r += step) {
 		count ++;
 		frames.push_back(warp(visu, pointsSrc, pointsDest, triang, r));
+		printf("Done with frame step %.3f\n", r);
 	}
 
 	double duration = 2000;
