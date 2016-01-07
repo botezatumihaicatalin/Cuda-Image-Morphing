@@ -40,8 +40,8 @@ void drawTriangulation(cimg_library::CImg<unsigned char> & img, const std::vecto
 
 struct WarpInput
 {
-	const unsigned char * img;
-	unsigned char * result;
+	const unsigned char * imageData;
+	unsigned char * resultData;
 	int width, height, depth, spectrum;
 
 	const Point * pointsSrc, * pointsDest;
@@ -50,6 +50,21 @@ struct WarpInput
 	const IndexTriangle * triangles;
 	int trianglesSize;
 };
+
+void cudaFreeWarpInput(WarpInput * deviceInput) {
+	WarpInput * hostInput = new WarpInput();
+
+	cudaMemcpy(hostInput, deviceInput, sizeof(WarpInput), cudaMemcpyHostToDevice);
+	
+	cudaFree((void*)hostInput->imageData);
+	cudaFree((void*)hostInput->resultData);
+	cudaFree((void*)hostInput->pointsSrc);
+	cudaFree((void*)hostInput->pointsDest);
+	cudaFree((void*)hostInput->triangles);
+	cudaFree((void*)deviceInput);
+
+	delete hostInput;
+}
 
 WarpInput * cudaCreateWarpInput(cimg_library::CImg<unsigned char> & img, 
 	const std::vector<Point> & pointsSrc,  
@@ -66,12 +81,12 @@ WarpInput * cudaCreateWarpInput(cimg_library::CImg<unsigned char> & img,
 	unsigned char * dImgData;
 	cudaMalloc(&dImgData, sizeof(unsigned char) * img.size());
 	cudaMemcpy(dImgData, imgData, sizeof(unsigned char) * img.size(), cudaMemcpyHostToDevice);
-	input->img = dImgData;
+	input->imageData = dImgData;
 
 	unsigned char * dResultData;
 	cudaMalloc(&dResultData, sizeof(unsigned char) * img.size());
 	cudaMemset(dResultData, 0, sizeof(unsigned char) * img.size());
-	input->result = dResultData;
+	input->resultData = dResultData;
 
 	const Point * pointsSrcData = pointsSrc.data();
 	Point * dPointsSrcData;
@@ -175,19 +190,10 @@ __host__ __device__ void processPixel(const double & x, const double & y, WarpIn
 		destp.x = destp.x * ratio + p.x * (1 - ratio); 
 		destp.y = destp.y * ratio + p.y * (1 - ratio); 
 
-		Point destpFloored;
-		destpFloored.x = (int)(destp.x);
-		destpFloored.y = (int)(destp.y);
-
-		Point destpRounded;
-		destpRounded.x = (int)round(destp.x);
-		destpRounded.y = (int)round(destp.y);
-
-		for (int c = 0; c < 3; c++)
+		for (int c = 0; c < input->spectrum; c++)
 		{
-			long offsetImg = at(destpRounded.x, destpRounded.y, 0, c, input->width, input->height, input->depth);
 			long offsetResult = at(x, y, 0, c, input->width, input->height, input->depth);
-			input->result[offsetResult] = cubic_atXY(destp.x, destp.y, 0, c, input->width, input->height, input->depth, input->img);
+			input->resultData[offsetResult] = cubic_atXY(destp.x, destp.y, 0, c, input->width, input->height, input->depth, input->imageData);
 		}
 
 		break;
@@ -229,8 +235,8 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 	int height = img.height();
 
 	WarpInput warpInput;
-	warpInput.img = img.data();
-	warpInput.result = result.data();
+	warpInput.imageData = img.data();
+	warpInput.resultData = result.data();
 	warpInput.width = img.width();
 	warpInput.height = img.height();
 	warpInput.depth = img.depth();
@@ -255,6 +261,7 @@ int main()
 {
 	cimg_library::CImg<unsigned char> imageSrc("test1/img1.jpg");
 	cimg_library::CImg<unsigned char> imageDest("test1/img2.jpg");
+
 	cimg_library::CImg<unsigned char> outSrc(imageSrc);
 	cimg_library::CImg<unsigned char> outDest(imageDest);
 
@@ -300,6 +307,7 @@ int main()
 			p.y = y;
 
 			pointsSrc.push_back(p);
+			pointsDest.push_back(p);
 
 			triang = boyerWatson(pointsSrc);
 			
@@ -309,20 +317,37 @@ int main()
 			drawPoints(outSrc, pointsSrc);
 			
 			outSrc.display(drawSrc);
+
+			outDest.assign(imageDest);
+			
+			drawTriangulation(outDest, pointsDest, triang);
+			drawPoints(outDest, pointsDest);
+			
+			outDest.display(drawDest);
 		}
 
 		if (drawDest.button() && drawDest.mouse_y() >= 0 && drawDest.mouse_x() >= 0) {
 			const int y = drawDest.mouse_y();
 			const int x = drawDest.mouse_x();
-
+			
 			Point p;
 			p.x = x;
 			p.y = y;
 
-			pointsDest.push_back(p);
+			for (int i = 0; i < pointsDest.size(); i++) 
+			{
+				if (dist(p, pointsDest[i]) < 10.0) 
+				{
+					pointsDest[i] = p;
+					break;
+				}
+			}
 			
 			outDest.assign(imageDest);
+			
+			drawTriangulation(outDest, pointsDest, triang);
 			drawPoints(outDest, pointsDest);
+			
 			outDest.display(drawDest);
 		}
 	}
@@ -332,6 +357,7 @@ int main()
 
 	WarpInput * dWarpInputSrc = cudaCreateWarpInput(imageSrc, pointsSrc, pointsDest, triang);
 	WarpInput * dWarpInputDest = cudaCreateWarpInput(imageDest, pointsDest, pointsSrc, triang);
+	
 	WarpInput * warpInputSrc = new WarpInput();
 	WarpInput * warpInputDest = new WarpInput();
 
@@ -354,13 +380,19 @@ int main()
 		cudaMemcpy(warpInputSrc, dWarpInputSrc, sizeof(WarpInput), cudaMemcpyDeviceToHost);
 		cudaMemcpy(warpInputDest, dWarpInputDest, sizeof(WarpInput), cudaMemcpyDeviceToHost);
 		
-		dissolve<<< numBlocks, threadsPerBlock >>>(warpInputSrc->result, warpInputDest->result, warpInputSrc->result, imageSrc.width(), imageSrc.height(), imageSrc.depth(), r); 
+		dissolve<<< numBlocks, threadsPerBlock >>>(
+			warpInputSrc->resultData, warpInputDest->resultData, warpInputSrc->resultData, 
+			imageSrc.width(), imageSrc.height(), imageSrc.depth(), r
+		); 
 	
-		cudaMemcpy(imageSrc._data, warpInputSrc->result, sizeof(unsigned char) * imageSrc.size(), cudaMemcpyDeviceToHost);
+		cudaMemcpy(imageSrc._data, warpInputSrc->resultData, sizeof(unsigned char) * imageSrc.size(), cudaMemcpyDeviceToHost);
 		
 		frames.push_back(imageSrc);
 		printf("Done with frame step %.3f\n", r);
 	}
+
+	cudaFreeWarpInput(dWarpInputSrc);
+	cudaFreeWarpInput(dWarpInputDest);
 
 	double duration = 2000;
 	double wait = duration / frames.size();
