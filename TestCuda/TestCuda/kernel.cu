@@ -200,27 +200,19 @@ __host__ __device__ void processPixel(const double & x, const double & y, WarpIn
 	}
 }
 
-__global__ void dissolve(unsigned char * img1, unsigned char * img2, unsigned char * result, int width, int height, int depth, double ratio) 
+__global__ void morphKernel(WarpInput * inputSrc, WarpInput * inputDest, double ratio = 1)
 {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	if (x >= 0 && x < width && y >= 0 && y < height)
+	processPixel(x, y, inputSrc, ratio);
+	processPixel(x, y, inputDest, 1 - ratio);
+
+	for (int c = 0; c < 3; c++)
 	{
-		for (int c = 0; c < 3; c++)
-		{
-			long offset = at(x, y, 0, c, width, height, depth); 
-			result[offset] = (1.0 - ratio) * img1[offset] + ratio * img2[offset]; 
-		}
+		long offset = at(x, y, 0, c, inputSrc->width, inputSrc->height, inputSrc->depth); 
+		inputSrc->resultData[offset] = (1.0 - ratio) * inputSrc->resultData[offset] + ratio * inputDest->resultData[offset]; 
 	}
-}
-
-__global__ void mykernel(WarpInput * input, double ratio = 1)
-{
-	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
-	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
-
-	processPixel(x, y, input, ratio);
 }
 
 
@@ -259,8 +251,8 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> imageSrc("test1/img1.jpg");
-	cimg_library::CImg<unsigned char> imageDest("test1/img2.jpg");
+	cimg_library::CImg<unsigned char> imageSrc("test2/img1.jpg");
+	cimg_library::CImg<unsigned char> imageDest("test2/img2.jpg");
 
 	cimg_library::CImg<unsigned char> outSrc(imageSrc);
 	cimg_library::CImg<unsigned char> outDest(imageDest);
@@ -373,18 +365,8 @@ int main()
 	for (double r = step; r <= 1.0; r += step) {
 		count ++;
 		
-		mykernel<<< numBlocks,threadsPerBlock >>>(dWarpInputSrc, r);
-		mykernel<<< numBlocks,threadsPerBlock >>>(dWarpInputDest, 1 - r);
-		cudaDeviceSynchronize();
-		
+		morphKernel<<< numBlocks, threadsPerBlock >>>(dWarpInputSrc, dWarpInputDest, r);
 		cudaMemcpy(warpInputSrc, dWarpInputSrc, sizeof(WarpInput), cudaMemcpyDeviceToHost);
-		cudaMemcpy(warpInputDest, dWarpInputDest, sizeof(WarpInput), cudaMemcpyDeviceToHost);
-		
-		dissolve<<< numBlocks, threadsPerBlock >>>(
-			warpInputSrc->resultData, warpInputDest->resultData, warpInputSrc->resultData, 
-			imageSrc.width(), imageSrc.height(), imageSrc.depth(), r
-		); 
-	
 		cudaMemcpy(imageSrc._data, warpInputSrc->resultData, sizeof(unsigned char) * imageSrc.size(), cudaMemcpyDeviceToHost);
 		
 		frames.push_back(imageSrc);
