@@ -252,8 +252,8 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> imageSrc("test1/img1.jpg");
-	cimg_library::CImg<unsigned char> imageDest("test1/img2.jpg");
+	cimg_library::CImg<unsigned char> imageSrc("test1/img2.jpg");
+	cimg_library::CImg<unsigned char> imageDest("test1/catface.jpg");
 
 	if (!(imageSrc.width() == imageDest.width() && 
 		imageSrc.height() == imageDest.height() && 
@@ -307,8 +307,21 @@ int main()
 			p.x = x;
 			p.y = y;
 
-			pointsSrc.push_back(p);
-			pointsDest.push_back(p);
+			bool next = false;
+			for (int i = 0; i < pointsSrc.size() && !next; i++) 
+			{
+				if (dist(p, pointsSrc[i]) < 10.0) 
+				{
+					pointsSrc[i] = p;
+					next = true;
+				}
+			}
+
+			if (!next) 
+			{
+				pointsSrc.push_back(p);
+				pointsDest.push_back(p);
+			}
 
 			triang = boyerWatson(pointsSrc);
 			
@@ -378,10 +391,10 @@ int main()
 		cudaMemcpy(warpInputSrc, dWarpInputSrc, sizeof(WarpInput), cudaMemcpyDeviceToHost);
 		cudaMemcpy(imageSrc._data, warpInputSrc->resultData, sizeof(unsigned char) * imageSrc.size(), cudaMemcpyDeviceToHost);
 
-		std::string fileName = "Test.jpg";
+		/*std::string fileName = "Test.jpg";
 		fileName = std::to_string((long long)count) + fileName;
 		fileName = "results/" + fileName;
-		imageSrc.save(fileName.c_str());
+		imageSrc.save(fileName.c_str());*/
 		frames.push_back(imageSrc);
 		printf("Done with frame step %.3f\n", r);
 	}
