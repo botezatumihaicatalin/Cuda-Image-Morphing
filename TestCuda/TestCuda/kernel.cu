@@ -5,6 +5,7 @@
 #include <CImg.h>
 #include <math.h>
 #include <vector>
+#include <string>
 
 #include "Geometry.h"
 #include "Delaunay.h"
@@ -251,8 +252,15 @@ cimg_library::CImg<unsigned char> warp(cimg_library::CImg<unsigned char> & img,
 
 int main()
 {
-	cimg_library::CImg<unsigned char> imageSrc("test2/img1.jpg");
-	cimg_library::CImg<unsigned char> imageDest("test2/img2.jpg");
+	cimg_library::CImg<unsigned char> imageSrc("test1/img1.jpg");
+	cimg_library::CImg<unsigned char> imageDest("test1/img2.jpg");
+
+	if (!(imageSrc.width() == imageDest.width() && 
+		imageSrc.height() == imageDest.height() && 
+		imageSrc.spectrum() == imageDest.spectrum()))
+	{
+		return 1;
+	}
 
 	cimg_library::CImg<unsigned char> outSrc(imageSrc);
 	cimg_library::CImg<unsigned char> outDest(imageDest);
@@ -283,6 +291,7 @@ int main()
 	drawPoints(outSrc, pointsSrc);
 
 	outDest.assign(imageDest);
+	drawTriangulation(outDest, pointsDest, triang);
 	drawPoints(outDest, pointsDest);
 
 	cimg_library::CImgDisplay drawSrc(outSrc, "Source morph");
@@ -368,7 +377,11 @@ int main()
 		morphKernel<<< numBlocks, threadsPerBlock >>>(dWarpInputSrc, dWarpInputDest, r);
 		cudaMemcpy(warpInputSrc, dWarpInputSrc, sizeof(WarpInput), cudaMemcpyDeviceToHost);
 		cudaMemcpy(imageSrc._data, warpInputSrc->resultData, sizeof(unsigned char) * imageSrc.size(), cudaMemcpyDeviceToHost);
-		
+
+		std::string fileName = "Test.jpg";
+		fileName = std::to_string((long long)count) + fileName;
+		fileName = "results/" + fileName;
+		imageSrc.save(fileName.c_str());
 		frames.push_back(imageSrc);
 		printf("Done with frame step %.3f\n", r);
 	}
