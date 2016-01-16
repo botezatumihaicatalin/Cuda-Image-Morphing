@@ -158,8 +158,10 @@ int main()
 	};
 
 	cimg_library::CImgDisplay result(imageSrc, "Morphing animation");
+	
 	clock_t tStart = clock();
-	std::vector<cimg_library::CImg<unsigned char>> frames = morph(imageSrc, imageDest, pointsSrc, pointsDest, triang);
+	DeviceMorph dMorph(imageSrc, imageDest, pointsSrc, pointsDest, triang);
+	std::vector<cimg_library::CImg<unsigned char>> frames = dMorph.computeMorph();
     printf("Time taken: %.2fs\n", (double)(clock() - tStart)/CLOCKS_PER_SEC);
 
 	double duration = 2000;
