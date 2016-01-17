@@ -3,6 +3,26 @@
 
 DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc, const cimg_library::CImg<unsigned char>& imageDest, const std::vector<Point>& pointsSrc, const std::vector<Point>& pointsDest, const std::vector<IndexTriangle>& triangles)
 {
+	if (!(imageSrc.width() == imageDest.width() &&
+		imageSrc.height() == imageDest.height() &&
+		imageSrc.depth() == imageDest.depth() &&
+		imageSrc.spectrum() == imageDest.spectrum()))
+	{
+		throw std::invalid_argument("Image source must be same width/height/depth/spectrum as destination.");
+	}
+
+	for (size_t triangleIndex = 0; triangleIndex < triangles.size(); triangleIndex++)
+	{
+		const IndexTriangle& triangle = triangles[triangleIndex];
+		for (size_t pIndex = 0; pIndex < 3; pIndex ++)
+		{
+			if (!(triangle.points[pIndex] < pointsSrc.size() && triangle.points[pIndex] < pointsDest.size()))
+			{
+				throw std::invalid_argument("Invalid triangulation for the given points.");
+			}
+		}
+	}
+
 	d_imageSrc = deviceImageFromCImg(imageSrc);
 	d_imageDest = deviceImageFromCImg(imageDest);
 	d_output = deviceImageFromCImg(imageSrc);
@@ -91,7 +111,7 @@ void morphKernel(DeviceMorph* d_instance, double ratio)
 	Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
 	Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, 1 - ratio);
 
-	for (int c = 0; c < 3; c++)
+	for (int c = 0; c < d_instance->d_output->spectrum; c++)
 	{
 		d_instance->d_output->at(p.x, p.y, 0, c) = (1.0 - ratio) * d_instance->d_imageSrc->cubic_atXY(srcPoint.x, srcPoint.y, 0, c) +
 			ratio * d_instance->d_imageDest->cubic_atXY(destPoint.x, destPoint.y, 0, c);
