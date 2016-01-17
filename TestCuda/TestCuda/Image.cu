@@ -1,28 +1,58 @@
 #include "Image.cuh"
 
+const unsigned char* Image::data() const
+{
+	return _data;
+}
+
+size_t Image::width() const
+{
+	return _width;
+}
+
+size_t Image::height() const
+{
+	return _height;
+}
+
+size_t Image::depth() const
+{
+	return _depth;
+}
+
+size_t Image::spectrum() const
+{
+	return _spectrum;
+}
+
+size_t Image::size() const
+{
+	return _width * _height * _depth * _spectrum;
+}
+
 long Image::offset(const int& x, const int& y, const int& z, const int& c) const
 {
-	return x + y * (long)width + z * (long)(width * height) + c * (long)(width * height * depth);
+	return x + y * (long)_width + z * (long)(_width * _height) + c * (long)(_width * _height * _depth);
 }
 
 const unsigned char& Image::at(const int& x, const int& y, const int& z, const int& c) const
 {
-	return data[offset(x, y, z, c)];
+	return _data[offset(x, y, z, c)];
 }
 
 unsigned char& Image::at(const int& x, const int& y, const int& z, const int& c)
 {
-	return data[offset(x, y, z, c)];
+	return _data[offset(x, y, z, c)];
 }
 
 double Image::cubic_atXY(const double& fx, const double& fy, const int& z, const int& c) const
 {
-	const double nfx = fx < 0 ? 0 : (fx > width - 1 ? width - 1 : fx);
-	const double nfy = fy < 0 ? 0 : (fy > height - 1 ? height - 1 : fy);
+	const double nfx = fx < 0 ? 0 : (fx > _width - 1 ? _width - 1 : fx);
+	const double nfy = fy < 0 ? 0 : (fy > _height - 1 ? _height - 1 : fy);
 	const int x = (int)nfx, y = (int)nfy;
 	const double dx = nfx - x, dy = nfy - y;
-	const int px = x - 1 < 0 ? 0 : x - 1, nx = dx > 0 ? x + 1 : x, ax = x + 2 >= width ? width - 1 : x + 2;
-	const int py = y - 1 < 0 ? 0 : y - 1, ny = dy > 0 ? y + 1 : y, ay = y + 2 >= height ? height - 1 : y + 2;
+	const int px = x - 1 < 0 ? 0 : x - 1, nx = dx > 0 ? x + 1 : x, ax = x + 2 >= _width ? _width - 1 : x + 2;
+	const int py = y - 1 < 0 ? 0 : y - 1, ny = dy > 0 ? y + 1 : y, ay = y + 2 >= _height ? _height - 1 : y + 2;
 	const double
 		Ipp = (double)at(px, py, z, c), Icp = (double)at(x, py, z, c), Inp = (double)at(nx, py, z, c),
 		Iap = (double)at(ax, py, z, c),
@@ -39,27 +69,27 @@ double Image::cubic_atXY(const double& fx, const double& fy, const int& z, const
 	return Ic + 0.5f * (dy * (-Ip + In) + dy * dy * (2 * Ip - 5 * Ic + 4 * In - Ia) + dy * dy * dy * (-Ip + 3 * Ic - 3 * In + Ia));
 }
 
-
-Image* deviceImageFromCImg(const cimg_library::CImg<unsigned char>& image)
+DeviceImage::DeviceImage(size_t width, size_t height, size_t depth, size_t spectrum)
 {
-	Image* hImg = new Image();
-	hImg->width = image.width();
-	hImg->height = image.height();
-	hImg->spectrum = image.spectrum();
-	hImg->depth = image.depth();
+	_width = width;
+	_height = height;
+	_depth = depth;
+	_spectrum = spectrum;
+	cudaMalloc(&_data, sizeof(unsigned char) * size());
+}
 
-	const unsigned char* imgData = image.data();
-	unsigned char* dImgData;
-	cudaMalloc(&dImgData, sizeof(unsigned char) * image.size());
-	cudaMemcpy(dImgData, imgData, sizeof(unsigned char) * image.size(), cudaMemcpyHostToDevice);
-	hImg->data = dImgData;
+DeviceImage::DeviceImage(const cimg_library::CImg<unsigned char>& image)
+{
+	_width = image.width();
+	_height = image.height();
+	_depth = image.depth();
+	_spectrum = image.spectrum();
+	cudaMalloc(&_data, sizeof(unsigned char) * image.size());
+	cudaMemcpy(_data, image.data(), sizeof(unsigned char) * image.size(), cudaMemcpyHostToDevice);
+}
 
-	Image* dImg;
-	cudaMalloc(&dImg, sizeof(Image));
-	cudaMemcpy(dImg, hImg, sizeof(Image), cudaMemcpyHostToDevice);
-
-	delete hImg;
-
-	return dImg;
+DeviceImage::~DeviceImage()
+{
+	cudaFree(_data);
 }
 

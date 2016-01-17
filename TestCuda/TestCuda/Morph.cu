@@ -23,12 +23,17 @@ DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc, cons
 		}
 	}
 
-	d_imageSrc = deviceImageFromCImg(imageSrc);
-	d_imageDest = deviceImageFromCImg(imageDest);
-	d_output = deviceImageFromCImg(imageSrc);
+	_imageSrc = new DeviceImage(imageSrc);
+	cudaMalloc(&d_imageSrc, sizeof(DeviceImage));
+	cudaMemcpy(d_imageSrc, _imageSrc, sizeof(DeviceImage), cudaMemcpyHostToDevice);
 
-	_output = new Image();
-	cudaMemcpy(_output, d_output, sizeof(Image), cudaMemcpyDeviceToHost);
+	_imageDest = new DeviceImage(imageDest);
+	cudaMalloc(&d_imageDest, sizeof(DeviceImage));
+	cudaMemcpy(d_imageDest, _imageDest, sizeof(DeviceImage), cudaMemcpyHostToDevice);
+
+	_output = new DeviceImage(imageSrc);
+	cudaMalloc(&d_output, sizeof(DeviceImage));
+	cudaMemcpy(d_output, _output, sizeof(DeviceImage), cudaMemcpyHostToDevice);
 
 	const Point* pointsSrcData = pointsSrc.data();
 	cudaMalloc(&d_pointsSrc, sizeof(Point) * pointsSrc.size());
@@ -56,7 +61,9 @@ DeviceMorph::~DeviceMorph()
 	cudaFree(d_pointsDest);
 	cudaFree(d_triangles);
 	cudaFree(d_instance);
-
+	
+	delete _imageSrc;
+	delete _imageDest;
 	delete _output;
 }
 
@@ -103,7 +110,7 @@ void morphKernel(DeviceMorph* d_instance, double ratio)
 	p.x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	p.y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
-	if (!(p.x >= 0 && p.x < d_instance->d_output->width && p.y >= 0 && p.y < d_instance->d_output->height))
+	if (!(p.x >= 0 && p.x < d_instance->d_output->width() && p.y >= 0 && p.y < d_instance->d_output->height()))
 	{
 		return;
 	}
@@ -111,27 +118,27 @@ void morphKernel(DeviceMorph* d_instance, double ratio)
 	Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
 	Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, 1 - ratio);
 
-	for (int c = 0; c < d_instance->d_output->spectrum; c++)
+	for (int c = 0; c < d_instance->d_output->spectrum(); c++)
 	{
 		d_instance->d_output->at(p.x, p.y, 0, c) = (1.0 - ratio) * d_instance->d_imageSrc->cubic_atXY(srcPoint.x, srcPoint.y, 0, c) +
-			ratio * d_instance->d_imageDest->cubic_atXY(destPoint.x, destPoint.y, 0, c);
+													ratio * d_instance->d_imageDest->cubic_atXY(destPoint.x, destPoint.y, 0, c);
 	}
 }
 
 std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
 {
-	int size = _output->width * _output->height * _output->depth * _output->spectrum;
-	cimg_library::CImg<unsigned char> cImg(_output->width, _output->height, _output->depth, _output->spectrum);
+	int size = _output->size();
+	cimg_library::CImg<unsigned char> cImg(_output->width(), _output->height(), _output->depth(), _output->spectrum());
 	std::vector<cimg_library::CImg<unsigned char>> frames;
 
 	dim3 threadsPerBlock(16, 16);
-	dim3 numBlocks((_output->width / threadsPerBlock.x) + 1, (_output->height / threadsPerBlock.y) + 1);
+	dim3 numBlocks((_output->width() / threadsPerBlock.x) + 1, (_output->height() / threadsPerBlock.y) + 1);
 
 	double step = 0.02;
 	for (double r = step; r <= 1.0; r += step)
 	{
 		morphKernel<<< numBlocks, threadsPerBlock >>>(d_instance, r);
-		cudaMemcpy(cImg._data, _output->data, sizeof(unsigned char) * size, cudaMemcpyDeviceToHost);
+		cudaMemcpy(cImg._data, _output->data(), sizeof(unsigned char) * size, cudaMemcpyDeviceToHost);
 		frames.push_back(cImg);
 		printf("Done with frame step %.3f\n", r);
 	}
