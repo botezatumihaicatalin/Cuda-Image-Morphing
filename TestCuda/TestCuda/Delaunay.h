@@ -10,6 +10,7 @@ struct IndexTriangle
 	size_t points[3];
 };
 
-std::vector<IndexTriangle> boyerWatson(const std::vector<Point> & pts);
+std::vector<IndexTriangle> boyerWatson(const std::vector<Point>& pts);
 
 #endif
+

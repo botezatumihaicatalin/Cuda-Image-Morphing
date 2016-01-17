@@ -1,11 +1,8 @@
 #include <stdio.h>
-#include "cuda.h"
 #include "cuda_runtime.h"
 #include <time.h>
 #include <CImg.h>
-#include <math.h>
 #include <vector>
-#include <string>
 
 #include "Geometry.h"
 #include "Delaunay.h"
@@ -44,7 +41,7 @@ void drawTriangulation(cimg_library::CImg<unsigned char> & img, const std::vecto
 int main()
 {
 	cimg_library::CImg<unsigned char> imageSrc("test1/img2.jpg");
-	cimg_library::CImg<unsigned char> imageDest("test1/catface.jpg");
+	cimg_library::CImg<unsigned char> imageDest("test1/img1.jpg");
 
 	if (!(imageSrc.width() == imageDest.width() && 
 		imageSrc.height() == imageDest.height() && 

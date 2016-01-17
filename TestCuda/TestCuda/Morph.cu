@@ -1,7 +1,7 @@
 #include "Morph.cuh"
 #include "Image.cuh"
 
-DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char> & imageSrc, const cimg_library::CImg<unsigned char> & imageDest, const std::vector<Point> & pointsSrc, const std::vector<Point> & pointsDest, const std::vector<IndexTriangle> & triangles)
+DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc, const cimg_library::CImg<unsigned char>& imageDest, const std::vector<Point>& pointsSrc, const std::vector<Point>& pointsDest, const std::vector<IndexTriangle>& triangles)
 {
 	d_imageSrc = deviceImageFromCImg(imageSrc);
 	d_imageDest = deviceImageFromCImg(imageDest);
@@ -10,15 +10,15 @@ DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char> & imageSrc, con
 	_output = new Image();
 	cudaMemcpy(_output, d_output, sizeof(Image), cudaMemcpyDeviceToHost);
 
-	const Point * pointsSrcData = pointsSrc.data();
+	const Point* pointsSrcData = pointsSrc.data();
 	cudaMalloc(&d_pointsSrc, sizeof(Point) * pointsSrc.size());
 	cudaMemcpy(d_pointsSrc, pointsSrcData, sizeof(Point) * pointsSrc.size(), cudaMemcpyHostToDevice);
-	
-	const Point * pointsDestData = pointsDest.data();
+
+	const Point* pointsDestData = pointsDest.data();
 	cudaMalloc(&d_pointsDest, sizeof(Point) * pointsDest.size());
 	cudaMemcpy(d_pointsDest, pointsDestData, sizeof(Point) * pointsDest.size(), cudaMemcpyHostToDevice);
 
-	const IndexTriangle * trianglesData = triangles.data();
+	const IndexTriangle* trianglesData = triangles.data();
 	cudaMalloc(&d_triangles, sizeof(IndexTriangle) * triangles.size());
 	cudaMemcpy(d_triangles, trianglesData, sizeof(IndexTriangle) * triangles.size(), cudaMemcpyHostToDevice);
 
@@ -26,7 +26,6 @@ DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char> & imageSrc, con
 
 	cudaMalloc(&d_instance, sizeof(DeviceMorph));
 	cudaMemcpy(d_instance, this, sizeof(DeviceMorph), cudaMemcpyHostToDevice);
-
 }
 
 DeviceMorph::~DeviceMorph()
@@ -42,13 +41,13 @@ DeviceMorph::~DeviceMorph()
 }
 
 __host__ __device__ 
-Point computePosition(Point & p, const Point * pointsSrc, const Point * pointsDest, const IndexTriangle * triangles, const int & trianglesSize, const double & ratio = 1)
+Point computePosition(Point& p, const Point* pointsSrc, const Point* pointsDest, const IndexTriangle* triangles, const int& trianglesSize, const double& ratio = 1)
 {
 	for (int trIdx = 0; trIdx < trianglesSize; trIdx++)
 	{
-		const Point & p1 = pointsDest[triangles[trIdx].points[0]];
-		const Point & p2 = pointsDest[triangles[trIdx].points[1]];
-		const Point & p3 = pointsDest[triangles[trIdx].points[2]];
+		const Point& p1 = pointsDest[triangles[trIdx].points[0]];
+		const Point& p2 = pointsDest[triangles[trIdx].points[1]];
+		const Point& p3 = pointsDest[triangles[trIdx].points[2]];
 
 		double bot = (p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y);
 		double sTop = (p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y);
@@ -62,23 +61,23 @@ Point computePosition(Point & p, const Point * pointsSrc, const Point * pointsDe
 			continue;
 		}
 
-		const Point & destp0 = pointsSrc[triangles[trIdx].points[0]];
-		const Point & destp1 = pointsSrc[triangles[trIdx].points[1]];
-		const Point & destp2 = pointsSrc[triangles[trIdx].points[2]];
+		const Point& destp0 = pointsSrc[triangles[trIdx].points[0]];
+		const Point& destp1 = pointsSrc[triangles[trIdx].points[1]];
+		const Point& destp2 = pointsSrc[triangles[trIdx].points[2]];
 
 		Point destp;
 		destp.x = s * destp0.x + t * destp1.x + (1 - s - t) * destp2.x;
 		destp.y = s * destp0.y + t * destp1.y + (1 - s - t) * destp2.y;
 
-		destp.x = destp.x * ratio + p.x * (1 - ratio); 
-		destp.y = destp.y * ratio + p.y * (1 - ratio); 
+		destp.x = destp.x * ratio + p.x * (1 - ratio);
+		destp.y = destp.y * ratio + p.y * (1 - ratio);
 
 		return destp;
 	}
 }
 
 __global__ 
-void morphKernel(DeviceMorph * d_instance, double ratio)
+void morphKernel(DeviceMorph* d_instance, double ratio)
 {
 	Point p;
 	p.x = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -90,26 +89,27 @@ void morphKernel(DeviceMorph * d_instance, double ratio)
 	}
 
 	Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
-	Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles,d_instance-> _trianglesSize, 1 - ratio);
+	Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, 1 - ratio);
 
 	for (int c = 0; c < 3; c++)
 	{
-		d_instance->d_output->at(p.x, p.y, 0, c) = (1.0 - ratio) * d_instance->d_imageSrc->cubic_atXY(srcPoint.x, srcPoint.y, 0, c) + 
-										ratio * d_instance->d_imageDest->cubic_atXY(destPoint.x, destPoint.y, 0, c);
+		d_instance->d_output->at(p.x, p.y, 0, c) = (1.0 - ratio) * d_instance->d_imageSrc->cubic_atXY(srcPoint.x, srcPoint.y, 0, c) +
+			ratio * d_instance->d_imageDest->cubic_atXY(destPoint.x, destPoint.y, 0, c);
 	}
 }
 
-std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph()
+std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
 {
 	int size = _output->width * _output->height * _output->depth * _output->spectrum;
 	cimg_library::CImg<unsigned char> cImg(_output->width, _output->height, _output->depth, _output->spectrum);
 	std::vector<cimg_library::CImg<unsigned char>> frames;
 
-	dim3 threadsPerBlock(16, 16); 
+	dim3 threadsPerBlock(16, 16);
 	dim3 numBlocks((_output->width / threadsPerBlock.x) + 1, (_output->height / threadsPerBlock.y) + 1);
 
 	double step = 0.02;
-	for (double r = step; r <= 1.0; r += step) {
+	for (double r = step; r <= 1.0; r += step)
+	{
 		morphKernel<<< numBlocks, threadsPerBlock >>>(d_instance, r);
 		cudaMemcpy(cImg._data, _output->data, sizeof(unsigned char) * size, cudaMemcpyDeviceToHost);
 		frames.push_back(cImg);
@@ -118,3 +118,4 @@ std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph()
 
 	return frames;
 }
+

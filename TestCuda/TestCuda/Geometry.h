@@ -20,9 +20,10 @@ struct Circle
 	double radius;
 };
 
-double dist(const Point & p1, const Point & p2);
-Circle findCircumcircle(const Point & p1, const Point & p2, const Point & p3);
-bool isInside(const Circle & c, const Point & p);
-double cross(const Point &A, const Point &O, const Point &B);
+double dist(const Point& p1, const Point& p2);
+Circle findCircumcircle(const Point& p1, const Point& p2, const Point& p3);
+bool isInside(const Circle& c, const Point& p);
+double cross(const Point& A, const Point& O, const Point& B);
 
 #endif
+
