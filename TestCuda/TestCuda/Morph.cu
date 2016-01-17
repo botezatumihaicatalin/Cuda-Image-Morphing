@@ -61,9 +61,9 @@ DeviceMorph::~DeviceMorph()
 }
 
 __host__ __device__ 
-Point computePosition(Point& p, const Point* pointsSrc, const Point* pointsDest, const IndexTriangle* triangles, const int& trianglesSize, const double& ratio = 1)
+Point computePosition(Point& p, const Point* pointsSrc, const Point* pointsDest, const IndexTriangle* triangles, const size_t& trianglesSize, const double& ratio = 1)
 {
-	for (int trIdx = 0; trIdx < trianglesSize; trIdx++)
+	for (size_t trIdx = 0; trIdx < trianglesSize; trIdx++)
 	{
 		const Point& p1 = pointsDest[triangles[trIdx].points[0]];
 		const Point& p2 = pointsDest[triangles[trIdx].points[1]];

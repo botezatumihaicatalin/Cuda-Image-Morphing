@@ -15,7 +15,7 @@ private:
 	Point *d_pointsSrc, *d_pointsDest;
 
 	IndexTriangle* d_triangles;
-	int _trianglesSize;
+	size_t _trianglesSize;
 
 	DeviceMorph* d_instance;
 

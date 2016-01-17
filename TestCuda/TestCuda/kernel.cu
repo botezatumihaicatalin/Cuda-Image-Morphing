@@ -14,18 +14,19 @@
 void drawPoints(cimg_library::CImg<unsigned char> & img, const std::vector<Point> & points)
 {
 	const unsigned char red[] = { 255,0,0 };
-	for (int i = 0; i < points.size(); i++)
+	for (size_t i = 0; i < points.size(); i++)
 	{
 		img.draw_circle(points[i].x, points[i].y, 3, red);
+
 	}
 }
 
 void drawTriangulation(cimg_library::CImg<unsigned char> & img, const std::vector<Point> & points, const std::vector<IndexTriangle> & triangles)
 {
 	const unsigned char green[] = { 0,255,0 };
-	for (int i = 0; i < triangles.size(); i++)
+	for (size_t i = 0; i < triangles.size(); i++)
 	{
-		for (int pIndex = 0; pIndex < 3; pIndex ++)
+		for (size_t pIndex = 0; pIndex < 3; pIndex ++)
 		{
 			int nextPIndex = (pIndex + 1) % 3;
 			img.draw_line(
@@ -96,7 +97,7 @@ int main()
 			p.y = y;
 
 			bool next = false;
-			for (int i = 0; i < pointsSrc.size() && !next; i++) 
+			for (size_t i = 0; i < pointsSrc.size() && !next; i++) 
 			{
 				if (dist(p, pointsSrc[i]) < 10.0) 
 				{
@@ -136,7 +137,7 @@ int main()
 			p.x = x;
 			p.y = y;
 
-			for (int i = 0; i < pointsDest.size(); i++) 
+			for (size_t i = 0; i < pointsDest.size(); i++) 
 			{
 				if (dist(p, pointsDest[i]) < 10.0) 
 				{
