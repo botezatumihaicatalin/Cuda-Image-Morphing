@@ -125,6 +125,36 @@ void morphKernel(DeviceMorph* d_instance, double ratio)
 	}
 }
 
+__global__
+void warpKernel(DeviceMorph* d_instance, double ratio, int way)
+{
+	Point p;
+	p.x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	p.y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (!(p.x >= 0 && p.x < d_instance->d_output->width() && p.y >= 0 && p.y < d_instance->d_output->height()))
+	{
+		return;
+	}
+
+	if (way == 1)
+	{
+		Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
+		for (int c = 0; c < d_instance->d_output->spectrum(); c++)
+		{
+			d_instance->d_output->at(p.x, p.y, 0, c) = d_instance->d_imageSrc->cubic_atXY(srcPoint.x, srcPoint.y, 0, c);
+		}
+	}
+	else if (way == 2)
+	{
+		Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
+		for (int c = 0; c < d_instance->d_output->spectrum(); c++)
+		{
+			d_instance->d_output->at(p.x, p.y, 0, c) = d_instance->d_imageDest->cubic_atXY(destPoint.x, destPoint.y, 0, c);
+		}
+	}
+}
+
 std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
 {
 	int size = _output->size();
@@ -146,3 +176,18 @@ std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
 	return frames;
 }
 
+
+
+cimg_library::CImg<unsigned char> DeviceMorph::computeWarp(double ratio, int way) const
+{
+	int size = _output->size();
+	
+	cimg_library::CImg<unsigned char> cImg(_output->width(), _output->height(), _output->depth(), _output->spectrum());
+	dim3 threadsPerBlock(16, 16);
+	dim3 numBlocks((_output->width() / threadsPerBlock.x) + 1, (_output->height() / threadsPerBlock.y) + 1);
+
+	warpKernel<<< numBlocks, threadsPerBlock >>>(d_instance, ratio, way);
+	cudaMemcpy(cImg._data, _output->data(), sizeof(unsigned char) * size, cudaMemcpyDeviceToHost);
+
+	return cImg;
+}

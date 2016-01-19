@@ -21,6 +21,7 @@ private:
 	DeviceMorph* d_instance;
 
 	__global__ friend void morphKernel(DeviceMorph* d_instance, double ratio = 1);
+	__global__ friend void warpKernel(DeviceMorph* d_instance, double ratio = 1, int way = 1);
 
 public:
 	DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc,
@@ -29,6 +30,7 @@ public:
 	            const std::vector<IndexTriangle>& triangles);
 
 	std::vector<cimg_library::CImg<unsigned char>> computeMorph() const;
+	cimg_library::CImg<unsigned char> computeWarp(double ratio = 1, int way = 1) const;
 
 	~DeviceMorph();
 };
