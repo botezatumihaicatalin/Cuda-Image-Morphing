@@ -11,9 +11,11 @@
 class DeviceMorph
 {
 private:
-	DeviceImage *d_imageSrc, *d_imageDest, *d_output;
-	DeviceImage *_imageSrc, *_imageDest, *_output;
+	DeviceImage *d_output;
+	DeviceImage *_output;
 	Point *d_pointsSrc, *d_pointsDest;
+
+	cudaTextureObject_t texSrc, texDest;
 
 	IndexTriangle* d_triangles;
 	size_t _trianglesSize;

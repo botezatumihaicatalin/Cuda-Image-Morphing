@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "cuda_runtime.h"
 #include <time.h>
 #include <CImg.h>
@@ -72,6 +73,15 @@ int main()
 	pointsSrc[3].y = imageSrc.height() - 1;
 
 	std::vector<Point> pointsDest(pointsSrc);
+
+	for (int i = 0; i < 0; i ++)
+	{
+		Point p;
+		p.x = rand() % (imageSrc.width() - 1) + 1;
+		p.y = rand() % (imageSrc.height() - 1) + 1;
+		pointsSrc.push_back(p);
+		pointsDest.push_back(p);
+	}
 
 	std::vector<IndexTriangle> triang = boyerWatson(pointsSrc);
 
