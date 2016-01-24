@@ -7,6 +7,7 @@
 #include "cuda_runtime.h"
 #include "Delaunay.h"
 #include "Image.cuh"
+#include "CImgTexture.cuh"
 
 class DeviceMorph
 {
@@ -15,7 +16,8 @@ private:
 	DeviceImage *_output;
 	Point *d_pointsSrc, *d_pointsDest;
 
-	cudaTextureObject_t texSrc, texDest;
+	CImgTexture *_imageSrcTexture, *_imageDestTexture;
+	CImgTexture *d_imageSrcTexture, *d_imageDestTexture;
 
 	IndexTriangle* d_triangles;
 	size_t _trianglesSize;

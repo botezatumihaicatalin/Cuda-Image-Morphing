@@ -1,46 +1,6 @@
 #include "Morph.cuh"
 #include "Image.cuh"
 
-cudaTextureObject_t cImgToTextureObject(const cimg_library::CImg<unsigned char>& image)
-{
-	size_t imageSize = image.size();
-	size_t imageWidth = image.width();
-	size_t imageHeight = image.height();
-	size_t widthHeight = image.width() * image.height();
-	const unsigned char* imageData = image.data();
-
-	cudaChannelFormatDesc channelFormat = cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsigned);
-	
-	cudaArray *cuArray = nullptr;
-	cudaMallocArray(&cuArray,&channelFormat,imageWidth,imageHeight);
-	
-	unsigned char * newData = new unsigned char[widthHeight * 4];
-	for (size_t i = 0; i < imageSize; i ++)
-	{
-		size_t index = i / widthHeight;
-		size_t offset = i % widthHeight;
-		newData[4 * offset + index] = imageData[i];
-	}
-	cudaMemcpyToArray(cuArray, 0, 0, newData, widthHeight * 4 * sizeof(unsigned char), cudaMemcpyHostToDevice);
-
-	cudaResourceDesc resDesc;
-	memset(&resDesc, 0, sizeof(resDesc));
-	resDesc.resType = cudaResourceTypeArray;
-	resDesc.res.array.array = cuArray;
-
-	cudaTextureDesc texDesc;
-	memset(&texDesc, 0, sizeof(texDesc));
-	texDesc.readMode = cudaReadModeElementType;
-	/*texDesc.addressMode[0] = cudaAddressModeWrap;
-	texDesc.addressMode[1] = cudaAddressModeWrap;
-	texDesc.filterMode = cudaFilterModeLinear;
-	texDesc.normalizedCoords = 0;*/
-
-	cudaTextureObject_t tex;
-	cudaCreateTextureObject(&tex, &resDesc, &texDesc, nullptr);
-	return tex;
-}
-
 DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc, const cimg_library::CImg<unsigned char>& imageDest, const std::vector<Point>& pointsSrc, const std::vector<Point>& pointsDest, const std::vector<IndexTriangle>& triangles)
 {
 	if (!(imageSrc.width() == imageDest.width() &&
@@ -63,8 +23,13 @@ DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc, cons
 		}
 	}
 
-	texSrc = cImgToTextureObject(imageSrc);
-	texDest = cImgToTextureObject(imageDest);
+	_imageSrcTexture = new CImgTexture(imageSrc);
+	cudaMalloc(&d_imageSrcTexture, sizeof(CImgTexture));
+	cudaMemcpy(d_imageSrcTexture, _imageSrcTexture, sizeof(CImgTexture), cudaMemcpyHostToDevice);
+
+	_imageDestTexture = new CImgTexture(imageDest);
+	cudaMalloc(&d_imageDestTexture, sizeof(CImgTexture));
+	cudaMemcpy(d_imageDestTexture, _imageDestTexture, sizeof(CImgTexture), cudaMemcpyHostToDevice);
 
 	_output = new DeviceImage(imageSrc);
 	cudaMalloc(&d_output, sizeof(DeviceImage));
@@ -96,9 +61,9 @@ DeviceMorph::~DeviceMorph()
 	cudaFree(d_triangles);
 	cudaFree(d_instance);
 
-	cudaDestroyTextureObject(texSrc);
-	cudaDestroyTextureObject(texDest);
-	
+	delete _imageSrcTexture;
+	delete _imageDestTexture;
+
 	delete _output;
 }
 
@@ -138,52 +103,6 @@ Point computePosition(Point& p, const Point* pointsSrc, const Point* pointsDest,
 	}
 }
 
-inline __host__ __device__ float bspline(float t)
-{
-	t = fabs(t);
-	const float a = 2.0f - t;
-
-	if (t < 1.0f) return 2.0f/3.0f - 0.5f*t*t*a;
-	else if (t < 2.0f) return a*a*a / 6.0f;
-	else return 0.0f;
-}
-
-__device__ uchar4 cubicTex2DSimple(cudaTextureObject_t tex, float x, float y)
-{
-	// transform the coordinate from [0,extent] to [-0.5, extent-0.5]
-	const float2 coord_grid = make_float2(x - 0.5f, y - 0.5f);
-	float2 index;
-	index.x = floor(coord_grid.x);
-	index.y = floor(coord_grid.y);
-	
-	float2 fraction;
-	fraction.x = coord_grid.x - index.x;
-	fraction.y = coord_grid.y - index.y;
-	
-	index.x += 0.5f;  //move from [-0.5, extent-0.5] to [0, extent]
-	index.y += 0.5f;  //move from [-0.5, extent-0.5] to [0, extent]
-
-	uchar4 result;
-	memset(&result, 0, sizeof(result));
-	for (float y=-1; y < 2.5f; y++)
-	{
-		float bsplineY = bspline(y-fraction.y);
-		float v = index.y + y;
-		for (float x=-1; x < 2.5f; x++)
-		{
-			float bsplineXY = bspline(x-fraction.x) * bsplineY;
-			float u = index.x + x;
-			uchar4 pixel = tex2D<uchar4>(tex, u, v);
-			result.x += pixel.x * bsplineXY;
-			result.y += pixel.y * bsplineXY;
-			result.z += pixel.z * bsplineXY;
-			result.w += pixel.w * bsplineXY;
-		}
-	}
-	return result;
-}
-
-
 __global__ 
 void morphKernel(DeviceMorph* d_instance, double ratio)
 {
@@ -199,8 +118,8 @@ void morphKernel(DeviceMorph* d_instance, double ratio)
 	Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
 	Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, 1 - ratio);
 
-	uchar4 srcPixel =  cubicTex2DSimple(d_instance->texSrc, srcPoint.x, srcPoint.y);
-	uchar4 destPixel =  cubicTex2DSimple(d_instance->texDest, destPoint.x, destPoint.y);
+	uchar4 srcPixel =  d_instance->d_imageSrcTexture->cubicTex2D(srcPoint.x, srcPoint.y);
+	uchar4 destPixel =  d_instance->d_imageDestTexture->cubicTex2D(destPoint.x, destPoint.y);
 
 	d_instance->d_output->at(p.x, p.y, 0, 0) = srcPixel.x * (1 - ratio) + destPixel.x * ratio;
 	d_instance->d_output->at(p.x, p.y, 0, 1) = srcPixel.y * (1 - ratio) + destPixel.y * ratio;
@@ -222,7 +141,7 @@ void warpKernel(DeviceMorph* d_instance, double ratio, int way)
 	if (way == 1)
 	{
 		Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
-		uchar4 srcPixel = tex2D<uchar4>(d_instance->texSrc, srcPoint.x + 0.5f, srcPoint.y + 0.5f);
+		uchar4 srcPixel = tex2D<uchar4>(d_instance->d_imageDestTexture->tex, srcPoint.x + 0.5f, srcPoint.y + 0.5f);
 		d_instance->d_output->at(p.x, p.y, 0, 0) = srcPixel.x;
 		d_instance->d_output->at(p.x, p.y, 0, 1) = srcPixel.y;
 		d_instance->d_output->at(p.x, p.y, 0, 2) = srcPixel.z;
@@ -230,7 +149,7 @@ void warpKernel(DeviceMorph* d_instance, double ratio, int way)
 	else if (way == 2)
 	{
 		Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
-		uchar4 destPixel = tex2D<uchar4>(d_instance->texDest, destPoint.x + 0.5f, destPoint.y + 0.5f);
+		uchar4 destPixel = tex2D<uchar4>(d_instance->d_imageSrcTexture->tex, destPoint.x + 0.5f, destPoint.y + 0.5f);
 		d_instance->d_output->at(p.x, p.y, 0, 0) = destPixel.x;
 		d_instance->d_output->at(p.x, p.y, 0, 1) = destPixel.y;
 		d_instance->d_output->at(p.x, p.y, 0, 2) = destPixel.z;
