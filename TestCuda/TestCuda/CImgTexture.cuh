@@ -12,7 +12,7 @@ private:
 	cudaArray* cuArray;
 public:
 	cudaTextureObject_t tex;
-	CImgTexture(const cimg_library::CImg<unsigned char>& image);
+	explicit CImgTexture(const cimg_library::CImg<unsigned char>& image);
 	~CImgTexture();
 
 	__device__ uchar4 linearTex2D(float x, float y);

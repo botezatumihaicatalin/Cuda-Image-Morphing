@@ -44,7 +44,7 @@ CImgTexture::~CImgTexture()
 	cudaFreeArray(cuArray);
 }
 
-uchar4 CImgTexture::linearTex2D(float x, float y)
+__device__ uchar4 CImgTexture::linearTex2D(float x, float y)
 {
 	return tex2D<uchar4>(tex, x, y);
 }
@@ -59,7 +59,7 @@ __host__ __device__ float bspline(float t)
 	else return 0.0f;
 }
 
-uchar4 CImgTexture::cubicTex2D(float x, float y)
+__device__ uchar4 CImgTexture::cubicTex2D(float x, float y)
 {
 	// transform the coordinate from [0,extent] to [-0.5, extent-0.5]
 	const float2 coord_grid = make_float2(x - 0.5f, y - 0.5f);

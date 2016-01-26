@@ -51,7 +51,6 @@ DeviceMorph::DeviceMorph(const cimg_library::CImg<unsigned char>& imageSrc, cons
 
 	cudaMalloc(&d_instance, sizeof(DeviceMorph));
 	cudaMemcpy(d_instance, this, sizeof(DeviceMorph), cudaMemcpyHostToDevice);
-
 }
 
 DeviceMorph::~DeviceMorph()
@@ -118,8 +117,8 @@ void morphKernel(DeviceMorph* d_instance, double ratio)
 	Point srcPoint = computePosition(p, d_instance->d_pointsSrc, d_instance->d_pointsDest, d_instance->d_triangles, d_instance->_trianglesSize, ratio);
 	Point destPoint = computePosition(p, d_instance->d_pointsDest, d_instance->d_pointsSrc, d_instance->d_triangles, d_instance->_trianglesSize, 1 - ratio);
 
-	uchar4 srcPixel =  d_instance->d_imageSrcTexture->cubicTex2D(srcPoint.x, srcPoint.y);
-	uchar4 destPixel =  d_instance->d_imageDestTexture->cubicTex2D(destPoint.x, destPoint.y);
+	uchar4 srcPixel = d_instance->d_imageSrcTexture->cubicTex2D(srcPoint.x, srcPoint.y);
+	uchar4 destPixel = d_instance->d_imageDestTexture->cubicTex2D(destPoint.x, destPoint.y);
 
 	d_instance->d_output->at(p.x, p.y, 0, 0) = srcPixel.x * (1 - ratio) + destPixel.x * ratio;
 	d_instance->d_output->at(p.x, p.y, 0, 1) = srcPixel.y * (1 - ratio) + destPixel.y * ratio;
@@ -178,11 +177,10 @@ std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
 }
 
 
-
 cimg_library::CImg<unsigned char> DeviceMorph::computeWarp(double ratio, int way) const
 {
 	int size = _output->size();
-	
+
 	cimg_library::CImg<unsigned char> cImg(_output->width(), _output->height(), _output->depth(), _output->spectrum());
 	dim3 threadsPerBlock(16, 16);
 	dim3 numBlocks((_output->width() / threadsPerBlock.x) + 1, (_output->height() / threadsPerBlock.y) + 1);
@@ -192,3 +190,4 @@ cimg_library::CImg<unsigned char> DeviceMorph::computeWarp(double ratio, int way
 
 	return cImg;
 }
+
