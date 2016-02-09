@@ -33,8 +33,8 @@ public:
 	            const std::vector<Point>& pointsSrc, const std::vector<Point>& pointsDest,
 	            const std::vector<IndexTriangle>& triangles);
 
-	std::vector<cimg_library::CImg<unsigned char>> computeMorph() const;
-	cimg_library::CImg<unsigned char> computeWarp(double ratio = 1, int way = 1) const;
+	std::vector<cimg_library::CImg<unsigned char>> computeMorph(const size_t threadsX = 1, const size_t threadsY = 1) const;
+	cimg_library::CImg<unsigned char> computeWarp(double ratio = 1, int way = 1, const size_t threadsX = 1, const size_t threadsY = 1) const;
 
 	~DeviceMorph();
 };

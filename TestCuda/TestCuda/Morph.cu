@@ -155,13 +155,13 @@ void warpKernel(DeviceMorph* d_instance, double ratio, int way)
 	}
 }
 
-std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
+std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph(const size_t threadsX, const size_t threadsY) const
 {
 	int size = _output->size();
 	cimg_library::CImg<unsigned char> cImg(_output->width(), _output->height(), _output->depth(), _output->spectrum());
 	std::vector<cimg_library::CImg<unsigned char>> frames;
 
-	dim3 threadsPerBlock(16, 16);
+	dim3 threadsPerBlock(threadsX, threadsY);
 	dim3 numBlocks((_output->width() / threadsPerBlock.x) + 1, (_output->height() / threadsPerBlock.y) + 1);
 
 	double step = 0.02;
@@ -177,12 +177,12 @@ std::vector<cimg_library::CImg<unsigned char>> DeviceMorph::computeMorph() const
 }
 
 
-cimg_library::CImg<unsigned char> DeviceMorph::computeWarp(double ratio, int way) const
+cimg_library::CImg<unsigned char> DeviceMorph::computeWarp(double ratio, int way, const size_t threadsX, const size_t threadsY) const
 {
 	int size = _output->size();
 
 	cimg_library::CImg<unsigned char> cImg(_output->width(), _output->height(), _output->depth(), _output->spectrum());
-	dim3 threadsPerBlock(16, 16);
+	dim3 threadsPerBlock(threadsX, threadsY);
 	dim3 numBlocks((_output->width() / threadsPerBlock.x) + 1, (_output->height() / threadsPerBlock.y) + 1);
 
 	warpKernel<<< numBlocks, threadsPerBlock >>>(d_instance, ratio, way);

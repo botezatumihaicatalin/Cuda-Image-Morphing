@@ -40,10 +40,15 @@ void drawTriangulation(cimg_library::CImg<unsigned char> & img, const std::vecto
 	}
 }
 
-int main()
+int main(int argc,char **argv)
 {
-	cimg_library::CImg<unsigned char> imageSrc("test1/img2.jpg");
-	cimg_library::CImg<unsigned char> imageDest("test1/img1.jpg");
+	const char* srcFilename = cimg_option("-src","imgSource.jpg","Input source image file");
+	const char* destFilename = cimg_option("-dest","imgDest.jpg","Input destination image file");
+	const size_t threadsX = cimg_option("-tx",1,"Threads on x dimenstion for each block");
+	const size_t threadsY = cimg_option("-ty",1,"Threads on y dimenstion for each block");
+
+	cimg_library::CImg<unsigned char> imageSrc(srcFilename);
+	cimg_library::CImg<unsigned char> imageDest(destFilename);
 
 	if (!(imageSrc.width() == imageDest.width() && 
 		imageSrc.height() == imageDest.height() && 
@@ -169,7 +174,7 @@ int main()
 	
 	clock_t tStart = clock();
 	DeviceMorph dMorph(imageSrc, imageDest, pointsSrc, pointsDest, triang);
-	std::vector<cimg_library::CImg<unsigned char>> frames = dMorph.computeMorph();
+	std::vector<cimg_library::CImg<unsigned char>> frames = dMorph.computeMorph(threadsX, threadsY);
     printf("Time taken: %.2fs\n", (double)(clock() - tStart)/CLOCKS_PER_SEC);
 
 	double duration = 2000;
