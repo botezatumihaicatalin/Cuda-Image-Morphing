@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestCuda", "TestCuda\TestCuda.vcxproj", "{A723E73F-0A31-4633-9052-0CC4CA153ECB}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Cuda-Image-Morphing", "Cuda-Image-Morphing\Cuda-Image-Morphing.vcxproj", "{A723E73F-0A31-4633-9052-0CC4CA153ECB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

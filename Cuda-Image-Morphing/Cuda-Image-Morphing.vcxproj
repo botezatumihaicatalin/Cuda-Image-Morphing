@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A723E73F-0A31-4633-9052-0CC4CA153ECB}</ProjectGuid>
-    <RootNamespace>TestCuda</RootNamespace>
+    <RootNamespace>Cuda-Image-Morphing</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
